@@ -257,7 +257,7 @@ import seaborn as sns
 
 def plot_heatmap(corr, title, figsize=(8, 4), vmin=-1, vmax=1, center=0,
                  palette=sns.color_palette("coolwarm", 20), shape='rect',
-                 fmt='.2f', robust=False, fig=None, ax=None):
+                 fmt='.2f', annot=True, robust=False, fig=None, ax=None):
 
     fig = plt.figure(figsize=figsize) if fig is None else fig
     ax = fig.add_subplot(111) if ax is None else ax
@@ -271,7 +271,7 @@ def plot_heatmap(corr, title, figsize=(8, 4), vmin=-1, vmax=1, center=0,
         print('ERROR : this type of heatmap does not exist')
 
     ax = sns.heatmap(corr, mask=mask, cmap=palette, vmin=vmin, vmax=vmax,
-                     center=center, annot=True, annot_kws={"size": 10}, fmt=fmt,
+                     center=center, annot=annot, annot_kws={"size": 10}, fmt=fmt,
                      square=False, linewidths=.5, linecolor='white',
                      cbar_kws={"shrink": .9, 'label': None}, robust=robust,
                      xticklabels=corr.columns, yticklabels=corr.index,
@@ -461,3 +461,407 @@ def model_impute(df, var_model, var_target, enc_strat_cat='label',
         if plot: plot_hist_pred_val(y_te, y_pr, y_pr_, short_lab=short_lab)
         # returning indexes to impute and calculated values
         return ind_to_impute, y_pr_
+
+
+
+''' Builds a customizable column_transformer which parameters can be optimized in a GridSearchCV
+CATEGORICAL : three differents startegies for 3 different types of
+categorical variables:
+- low cardinality: customizable strategy (strat_low_card)
+- high cardinality: customizable strategy (strat_high_card)
+- boolean or equivalent (2 categories): ordinal
+QUANTITATIVE (remainder): 
+- StandardScaler
+
+-> EXAMPLE (to use apart from gscv):
+cust_enc = CustTransformer(thresh_card=12,
+                       strat_binary = 'ord',
+                       strat_low_card = 'ohe',
+                       strat_high_card = 'loo',
+                       strat_quant = 'stand')
+cust_enc.fit(X_tr, y1_tr)
+cust_enc.transform(X_tr).shape, X_tr.shape
+
+-> EXAMPLE (to fetch names of the modified dataframe):
+small_df = df[['Outlier', 'Neighborhood', 'CertifiedPreviousYear',
+               'NumberofFloors','ExtsurfVolRatio']]
+# small_df.head(2)
+cust_trans = CustTransformer()
+cust_trans.fit(small_df)
+df_enc = cust_trans.transform(small_df)
+cust_trans.get_feature_names(small_df)
+
+'''
+from sklearn.base import BaseEstimator
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+import category_encoders as ce
+from sklearn.preprocessing import *
+import numpy as np
+import pandas as pd
+
+
+class CustTransformer(BaseEstimator):
+
+    def __init__(self, thresh_card=12,
+                 strat_binary='ord', strat_low_card='ohe',
+                 strat_high_card='bin', strat_quant='stand'):
+        self.thresh_card = thresh_card
+        self.strat_binary = strat_binary
+        self.strat_low_card = strat_low_card
+        self.strat_high_card = strat_high_card
+        self.strat_quant = strat_quant
+        self.dict_enc_strat = {'binary': strat_binary,
+                               'low_card': strat_low_card,
+                               'high_card': strat_high_card,
+                               'numeric': strat_quant}
+
+    def d_type_col(self, X):
+        bin_cols = (X.nunique()[X.nunique() <= 2].index)
+        X_C_cols = X.select_dtypes(include=['object', 'category'])
+        C_l_card_cols = \
+            X_C_cols.nunique()[X_C_cols.nunique() \
+                .between(3, self.thresh_card)].index
+        C_h_card_cols = \
+            X_C_cols.nunique()[X_C_cols.nunique() > self.thresh_card].index
+        Q_cols = [c for c in X.select_dtypes(include=[np.number]).columns \
+                  if c not in bin_cols]
+        d_t = {'binary': bin_cols,
+               'low_card': C_l_card_cols,
+               'high_card': C_h_card_cols,
+               'numeric': Q_cols}
+        d_t = {k: v for k, v in d_t.items() if len(v)}
+        # print(d_t)
+        return d_t
+
+    def get_feature_names(self, X, y=None):
+        if self.has_num and self.has_cat:
+            self.ct_cat.fit(X, y)
+            cols = self.ct_cat.get_feature_names() + self.num_cols
+        elif self.has_num and not self.has_cat:
+            cols = self.num_cols
+        elif not self.has_num and self.has_cat:
+            self.ct_cat.fit(X, y)
+            cols = self.ct_cat.get_feature_names()
+        else:
+            cols = None
+        return cols
+
+    def fit(self, X, y=None):
+        # Dictionary to translate strategies
+        d_enc = {'ohe': ce.OneHotEncoder(),
+                 'hash': ce.HashingEncoder(),
+                 'ord': ce.OrdinalEncoder(),
+                 'loo': ce.LeaveOneOutEncoder(),
+                 'bin': ce.BinaryEncoder(),
+                 'stand': StandardScaler(),
+                 'minmax': MinMaxScaler(),
+                 'maxabs': MaxAbsScaler(),
+                 'robust': RobustScaler(quantile_range=(25, 75)),
+                 'norm': Normalizer(),
+                 'quant_uni': QuantileTransformer(output_distribution='uniform'),
+                 'quant_norm': QuantileTransformer(output_distribution='normal'),
+                 'boxcox': PowerTransformer(method='box-cox'),
+                 'yeo': PowerTransformer(method='yeo-johnson'),
+                 'log': FunctionTransformer(func=lambda x: np.log1p(x),
+                                            inverse_func=lambda x: np.expm1(x)),
+                 'none': FunctionTransformer(func=lambda x: x,
+                                             inverse_func=lambda x: x),
+                 }
+
+        # # dictionnaire liste des transfo categorielles EXISTANTES
+        d_t = self.d_type_col(X)
+        # numerics
+        self.has_num = ('numeric' in d_t.keys())
+        # categoricals
+        self.has_cat = len([s for s in d_t.keys() if s in ['binary', 'low_card', 'high_card']]) > 0
+        if self.has_cat:
+            list_trans = []  # dictionnaire des transfo categorielles EXISTANTES
+            for k, v in d_t.items():
+                if k != 'numeric':
+                    list_trans.append((k, d_enc[self.dict_enc_strat[k]], v))
+
+            self.cat_cols = []  # liste des colonnes catégorielles à transformer
+            for k, v in self.d_type_col(X).items():
+                if k != 'numeric': self.cat_cols += (list(v))
+
+            self.ct_cat = ColumnTransformer(list_trans)
+            self.cat_trans = Pipeline([("categ", self.ct_cat)])
+
+        if self.has_num:
+            self.num_trans = Pipeline([("numeric", d_enc[self.strat_quant])])
+            self.num_cols = d_t['numeric']
+
+        if self.has_num and self.has_cat:
+            self.column_trans = \
+                ColumnTransformer([('cat', self.cat_trans, self.cat_cols),
+                                   ('num', self.num_trans, self.num_cols)])
+        elif self.has_num and not self.has_cat:
+            self.column_trans = \
+                ColumnTransformer([('num', self.num_trans, self.num_cols)])
+        elif not self.has_num and self.has_cat:
+            self.column_trans = ColumnTransformer([('cat', self.cat_trans, self.cat_cols)])
+        else:
+            print("The dataframe is empty : no transformation can be done")
+            
+        return self.column_trans.fit(X, y)
+    
+    def transform(self, X, y=None):
+        return pd.DataFrame(self.column_trans.transform(X),
+                            index=X.index,
+                            columns=self.get_feature_names(X, y))
+
+    def fit_transform(self, X, y=None):
+        self.fit(X, y)
+        return pd.DataFrame(self.column_trans.transform(X),
+                            index=X.index,
+                            columns=self.get_feature_names(X, y))
+        # if y is None:
+        #     self.fit(X)
+        #     return pd.DataFrame(self.column_trans.transform(X),
+        #                         index=X.index,
+        #                         columns=self.get_feature_names(X, y))
+        # else:
+        #     self.fit(X, y)
+        #     return pd.DataFrame(self.column_trans.transform(X),
+        #                         index=X.index,
+        #                         columns=self.get_feature_names(X, y))
+
+
+
+'''
+t-SNE wrapper in order to use t-SNE as a dimension reducter as a pipeline step of a 
+GridSearch (indeed, tsne doesn't have a transform method but only a fit_transform 
+method -> it cannot be applied to another set of data than the one on which it was trained)
+'''
+
+from sklearn.manifold import TSNE
+
+class TSNE_wrapper(TSNE):
+
+    def __init__(self, angle=0.5, early_exaggeration=12.0, init='random',
+                 learning_rate=200.0, method='barnes_hut', metric='euclidean',
+                 min_grad_norm=1e-07, n_components=2, n_iter=1000,
+                 n_iter_without_progress=300, n_jobs=None,
+                 perplexity=30.0, random_state=None, verbose=0):
+
+        self.angle = angle
+        self.early_exaggeration = early_exaggeration
+        self.init = init
+        self.learning_rate = learning_rate
+        self.method = method
+        self.metric = metric
+        self.min_grad_norm = min_grad_norm
+        self.n_components = n_components
+        self.n_iter = n_iter
+        self.n_iter_without_progress = n_iter_without_progress
+        self.n_jobs = n_jobs
+        self.perplexity = perplexity
+        self.random_state = random_state
+        self.verbose = verbose
+
+    def transform(self, X):
+        return TSNE().fit_transform(X)
+
+    def fit(self,X):
+        return TSNE().fit(X)
+
+'''
+Computing the trustworthiness category by category
+'''
+from sklearn.manifold import trustworthiness
+
+def groups_trustworthiness(df, df_proj, ser_clust, n_neighbors=5):
+    
+    gb_clust = df.groupby(ser_clust)
+    tw_clust, li_clust = [], []
+    for n_clust, ind_sub_df in gb_clust.groups.items():
+        li_clust.append(n_clust)
+        tw_clust.append(trustworthiness(df.loc[ind_sub_df],
+                                        df_proj.loc[ind_sub_df],
+                                        n_neighbors=n_neighbors, metric='euclidean'))
+    ser = pd.Series(tw_clust,
+                    index=li_clust,
+                    name='tw')
+    return ser
+
+
+
+'''Computes the projection of the observations of X on the two first axes of
+a transformation (PCA, UMAP or t-SNE)
+The center option (clustering model needed) allows to project the centers
+on the two axis for further display, and to return the fitted model
+NB: if the model wa already fitted, does not refit.'''
+
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from umap import UMAP
+from sklearn.manifold import TSNE
+from sklearn.utils.validation import check_is_fitted
+
+
+def prepare_2D_axes(X, y, ser_clust=None, proj=['PCA', 'UMAP', 't-SNE'],
+                    model=None, centers_on=False, random_state=14):
+
+    dict_proj = dict()
+
+    if centers_on:  # Compute and include the centers in the points
+        if model is not None:
+            model = model.fit(X, y) if not check_is_fitted(model) else model
+            # ### all clusterers don't have .cluster_centers method -> changed
+            # centers = model.cluster_centers_ 
+            # ind_centers = ["clust_" + str(i) for i in range(centers.shape[0])]
+            # centers_df = pd.DataFrame(centers,
+            #                           index=ind_centers,
+            #                           columns=X.columns)
+            #### all clusterers don't have .predict/labels_ method -> changed
+            if hasattr(model, 'labels_'):
+                clust = model.labels_
+            else:
+                clust = model.predict(X)
+        else:
+            clust = ser_clust
+        # calculation of centers
+        centers_df = X.assign(clust=clust).groupby('clust').mean()
+        X = X.append(centers_df)
+
+    ## Projection of all the points through the transformations
+
+    # PCA
+    if 'PCA' in proj:
+        pca = PCA(n_components=2, random_state=random_state)
+        df_proj_PCA_2D = pd.DataFrame(pca.fit_transform(X),
+                                      index=X.index,
+                                      columns=['PC' + str(i) for i in range(2)])
+        dict_proj = dict({'PCA': df_proj_PCA_2D})
+
+    # UMAP
+    if 'UMAP' in proj:
+        umap = UMAP(n_components=2, random_state=random_state)
+        df_proj_UMAP_2D = pd.DataFrame(umap.fit_transform(X),
+                                       index=X.index,
+                                       columns=['UMAP' + str(i) for i in range(2)])
+        dict_proj = dict({'UMAP': df_proj_UMAP_2D})
+
+    # t-SNE
+    if 't-SNE' in proj:
+        tsne = TSNE(n_components=2, random_state=random_state)
+        df_proj_tSNE_2D = pd.DataFrame(tsne.fit_transform(X),
+                                       index=X.index,
+                                       columns=['t-SNE' + str(i) for i in range(2)])
+        dict_proj = dict({'t-SNE': df_proj_tSNE_2D})
+
+    # Separate the clusters centers from the other points if center option in on
+    if centers_on:
+        dict_proj_centers = {}
+        for name, df_proj in dict_proj.items():
+            dict_proj_centers[name] = dict_proj[name].loc[centers_df.index]
+            dict_proj[name] = dict_proj[name].drop(index=centers_df.index)
+        return dict_proj, dict_proj_centers, model
+    else:
+        return dict_proj
+
+
+''' Plots the points on two axis (projection choice available : PCA, UMAP, t-SNE)
+with clusters coloring if model available (grey if no model given).
+NB: if the model wa already fitted, does not refit.'''
+
+import seaborn as sns
+
+def plot_projection(X, y, model=None, ser_clust = None, proj='PCA',
+                    tw_n_neigh=5, title=None, bboxtoanchor=None,
+                    figsize=(5, 3), size=1, palette='tab10',
+                    legend_on=False, fig=None, ax=None, random_state=14):
+
+    fig = plt.figure(figsize=figsize) if fig is None else fig
+    ax = fig.add_subplot(111) if ax is None else ax
+
+    # a1 - if model : computes clusters, clusters centers and plot with colors
+    if model is not None:
+
+        # Computes the axes for projection with centers
+        # (uses fitted model if already fitted)
+        dict_proj, dict_proj_centers, model = prepare_2D_axes(X, y,
+                                                              proj=[proj],
+                                                              model=model,
+                                                              centers_on=True,
+                                                              random_state=random_state)
+
+        # ...or using model already fitted in prepare_2D_axes to get it
+        #### all clusterers don't have .predict/labels_ method -> changed
+        if hasattr(model, 'labels_'):
+            clust = model.labels_
+        else:
+            clust = model.predict(X)
+        ser_clust = pd.Series(clust,
+                                index=X.index,
+                                name='Clust')
+        
+    # a2 - if no model but ser_clust is given, plot with colors
+    elif ser_clust is not None:
+        
+        # Computes the axes for projection
+        dict_proj, dict_proj_centers, _ = \
+            prepare_2D_axes(X, y, ser_clust=ser_clust, proj=[proj],
+                            model=None, centers_on=True,
+                            random_state=random_state)
+
+        n_clust = ser_clust.nunique()
+        colors = sns.color_palette(palette, n_clust).as_hex()
+
+    # Computing the global trustworthiness
+    trustw = trustworthiness(X, dict_proj[proj],
+                            n_neighbors=tw_n_neigh, metric='euclidean')
+    # Computing the trustworthiness category by category
+    ser_tw_clust = groups_trustworthiness(X, dict_proj[proj], ser_clust,
+                                          n_neighbors=tw_n_neigh)
+
+    # b1 - if ser_clust exists (either calculated from model or given)
+    if ser_clust is not None:
+
+        # Showing the points, cluster by cluster
+        # for i in range(n_clust):
+        for i, name_clust in enumerate(ser_clust.unique()):
+            ind = ser_clust[ser_clust == name_clust].index
+            ax.scatter(dict_proj[proj].loc[ind].iloc[:, 0],
+                       dict_proj[proj].loc[ind].iloc[:, 1],
+                       s=size, alpha=0.7, c=colors[i], zorder=1)
+
+            # Showing the clusters centers
+            ax.scatter(dict_proj_centers[proj].iloc[:, 0].loc[name_clust],
+                        dict_proj_centers[proj].iloc[:, 1].loc[name_clust],
+                        marker='o', c=colors[i], alpha=0.7, s=150,
+                       edgecolor='k',
+                       label="{}: {} | tw={:0.2f}".format(i, name_clust,
+                                                          ser_tw_clust[name_clust]),
+                       zorder=10) # for the labels only
+            # Showing the clusters centers labels (number)
+            ax.scatter(dict_proj_centers[proj].iloc[:, 0].loc[name_clust],
+                        dict_proj_centers[proj].iloc[:, 1].loc[name_clust],
+                        marker=r"$ {} $".format(i),#
+                        c='k', alpha=1, s=70, zorder=100)
+            if legend_on:
+                plt.legend().get_frame().set_alpha(0.3)
+            if bboxtoanchor is not None:
+                plt.legend(bbox_to_anchor=bboxtoanchor)
+            else: 
+                plt.legend()
+
+
+    # b2 - if no ser_clust: only plot points in grey
+    else:
+        # Computes the axes for projection without centers
+        dict_proj = prepare_2D_axes(X, y,
+                                    proj=[proj],
+                                    centers_on=False,
+                                    random_state=random_state)
+        # Plotting the point in grey
+        ax.scatter(dict_proj[proj].iloc[:, 0],
+                   dict_proj[proj].iloc[:, 1],
+                   s=size, alpha=0.7, c='grey')
+
+    title = "Projection: " + proj + "(trustworthiness: {:.2f})".format(trustw)\
+             if title is None else title
+    ax.set_title(title + "\n(trustworthiness: {:.2f})".format(trustw),
+                 fontsize=12, fontweight='bold')
+    ax.set_xlabel('ax 1'), ax.set_ylabel('ax 2')
