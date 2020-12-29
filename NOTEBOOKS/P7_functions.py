@@ -603,31 +603,139 @@ class CustTransformer(BaseEstimator):
             self.column_trans = ColumnTransformer([('cat', self.cat_trans, self.cat_cols)])
         else:
             print("The dataframe is empty : no transformation can be done")
-            
+        self.name_columns = self.get_feature_names(X, y)
         return self.column_trans.fit(X, y)
-    
-    def transform(self, X, y=None):
+
+    def transform(self, X, y=None):  # to get a dataframe
         return pd.DataFrame(self.column_trans.transform(X),
                             index=X.index,
-                            columns=self.get_feature_names(X, y))
+                            columns=self.name_columns)
 
     def fit_transform(self, X, y=None):
         self.fit(X, y)
         return pd.DataFrame(self.column_trans.transform(X),
                             index=X.index,
-                            columns=self.get_feature_names(X, y))
-        # if y is None:
-        #     self.fit(X)
-        #     return pd.DataFrame(self.column_trans.transform(X),
-        #                         index=X.index,
-        #                         columns=self.get_feature_names(X, y))
-        # else:
-        #     self.fit(X, y)
-        #     return pd.DataFrame(self.column_trans.transform(X),
-        #                         index=X.index,
-        #                         columns=self.get_feature_names(X, y))
+                            columns=self.name_columns)
 
 
+''' Class to filter outliers from X and y from the zscore of the X columns
+eliminates a line if the value of one or more features is outlier. 
+(CANNOT BE USED IN A PIPELINE !!!) version P4'''
+
+import scipy.stats as st
+from sklearn.base import BaseEstimator, TransformerMixin
+
+class ZscoreSampleFilter(BaseEstimator, TransformerMixin):
+    def __init__(self, thresh = None, keep=None):
+        self.thresh = thresh if thresh is not None else 5
+        self.keep = keep if keep is not None else 'any'
+
+    def fit(self, X, y=None):
+        self.X_zscore = X.apply(st.zscore, axis=0)
+        if self.keep=='all':
+            self.samplefilter = (np.abs(self.X_zscore)<self.thresh).all(1) # on garde les lignes si toutes sont des inliers
+        elif self.keep=='any':
+            self.samplefilter = (np.abs(self.X_zscore)<self.thresh).any(1) # on garde les lignes si une seule est un inlier
+        return self
+
+    def transform(self, X, y=None, copy=None):
+        # X_mod = X.loc[:,self.featurefilter]
+        X_mod = X.loc[self.samplefilter]
+        if y is not None:
+            y_mod = y.loc[self.samplefilter]
+            return X_mod, y_mod
+        else:
+            return X_mod
+
+    def fit_transform(self, X, y=None, **fit_params):
+        if y is None:
+            return self.fit(X, **fit_params).transform(X)
+        else:
+            return self.fit(X, y, **fit_params).transform(X,y)
+
+"""  
+Class to filter outliers from X and y from a LOF analysis on X
+(CANNOT BE USED IN A PIPELINE !!!)
+A threshold is set for selection criteria, 
+neg_conf_val (float): threshold for excluding samples with a lower
+ negative outlier factor.
+ NB: may not be that useful, because we can use LocalOutlierFactor.predict method...
+"""
+
+from sklearn.pipeline import Pipeline
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.neighbors import LocalOutlierFactor
+
+class LOFSampleFilter(BaseEstimator, TransformerMixin):
+
+    def __init__(self, contamination=None, n_neighbors=None, **kwargs):
+        self.contamination = contamination if contamination is not None else 0.05
+        self.n_neighbors = n_neighbors if n_neighbors is not None else 5
+        self.kwargs = kwargs
+
+    def fit(self, X, y=None, *args, **kwargs):
+        lcf = LocalOutlierFactor(n_neighbors=self.n_neighbors,
+                                 contamination=self.contamination,
+                                 **self.kwargs)
+        self.samplefilter = pd.Series(lcf.fit_predict(X))
+        self.samplefilter = self.samplefilter.replace({1: True, # inliners
+                                          -1: False}) # outliers
+        return self
+
+    def transform(self, X, y=None, copy=None):
+        X_mod = X.loc[self.samplefilter.values]
+        if y is not None:
+            y_mod = y.loc[self.samplefilter.values]
+            return X_mod, y_mod
+        else:
+            return X_mod
+
+    def fit_transform(self, X, y=None, **fit_params):
+        if y is None:
+            return self.fit(X, **fit_params).transform(X)
+        else:
+            return self.fit(X, y, **fit_params).transform(X,y)
+
+"""  
+Class to filter outliers from X and y from a LOF analysis on X
+(CANNOT BE USED IN A PIPELINE !!!)
+A threshold is set for selection criteria, 
+score_samples (float): threshold for excluding samples with a lower
+score_samples.
+NB: may not be that useful, because we can use IsolationForest.predict method...
+"""
+
+from sklearn.ensemble import IsolationForest
+
+class IsolForestSampleFilter(BaseEstimator, TransformerMixin):
+    
+    def __init__(self, contamination=None, n_estimators=None, **kwargs):
+        self.contamination = contamination if contamination is not None else 0.05
+        self.n_estimators = n_estimators if n_estimators is not None else 100
+        self.kwargs = kwargs
+
+    def fit(self, X, y=None, *args, **kwargs):
+        isolf = IsolationForest(n_estimators=self.n_estimators,
+                                contamination=self.contamination,
+                                **self.kwargs)
+        self.samplefilter = pd.Series(isolf.fit_predict(X))
+        self.samplefilter = (self.samplefilter).replace({1: True, # inliners
+                                                         -1: False}) # outliers
+        return self
+
+    def transform(self, X, y=None, copy=None):
+        X_mod = X.loc[self.samplefilter.values]
+        if y is not None:
+            y_mod = y.loc[self.samplefilter.values]
+            return X_mod, y_mod
+        else:
+            return X_mod
+
+    def fit_transform(self, X, y=None, **fit_params):
+        if y is None:
+            return self.fit(X, **fit_params).transform(X)
+        else:
+            return self.fit(X, y, **fit_params).transform(X,y)
 
 '''
 t-SNE wrapper in order to use t-SNE as a dimension reducter as a pipeline step of a 
@@ -865,3 +973,253 @@ def plot_projection(X, y, model=None, ser_clust = None, proj='PCA',
     ax.set_title(title + "\n(trustworthiness: {:.2f})".format(trustw),
                  fontsize=12, fontweight='bold')
     ax.set_xlabel('ax 1'), ax.set_ylabel('ax 2')
+
+
+
+
+'''Plotting one given score for all or a selection of the hyperparameters tested with a gsearch
+Can choose the aggregation function for the score on all other parameters
+option for using pooled standard deviation in stead of regular std'''
+
+def plot_hyperparam_tuning(gs, grid_params, params=None, score='score',
+                           pooled_std=False, agg_func=np.mean):
+
+    if params is not None:
+        grid_params = {k:v for (k,v) in grid_params.items() if k in params}
+
+    def pooled_var(stds):
+        n = 5 # size of each group
+        return np.sqrt(sum((n-1)*(stds**2))/ len(stds)*(n-1))
+    # recalculates the standard deviation using pooled variance
+    std_func = pooled_var if pooled_std else np.std
+
+    df = pd.DataFrame(gs.cv_results_)
+    results = ['mean_test_'+score,
+                'mean_train_'+score,
+                'std_test_'+score, 
+                'std_train_'+score]
+
+    fig, axes = plt.subplots(1, len(grid_params), 
+                            figsize = (3.2*len(grid_params), 3),
+                            sharey='row')
+    axes[0].set_ylabel(score, fontsize=12)
+
+    for idx, (param_name, param_range) in enumerate(grid_params.items()):
+        grouped_df = df.groupby('param_'+param_name)[results]\
+            .agg({'mean_train_'+score: agg_func,
+                'mean_test_'+score: agg_func,
+                'std_train_'+score: std_func,
+                'std_test_'+score: std_func})
+        previous_group = df.groupby(f'param_{param_name}')[results]
+        lw = 2
+        axes[idx].plot(param_range, grouped_df['mean_train_'+score], label="Train (CV)",
+                    color="darkorange",marker='o',ms=3, lw=lw)
+        axes[idx].fill_between(param_range,
+                            grouped_df['mean_train_'+score] - grouped_df['std_train_'+score],
+                            grouped_df['mean_train_'+score] + grouped_df['std_train_'+score], 
+                            alpha=0.2, color="darkorange", lw=lw)
+        axes[idx].plot(param_range, grouped_df['mean_test_'+score],
+                    label="Test (CV)", marker='o',ms=3, color="navy", lw=lw)
+        axes[idx].fill_between(param_range,
+                            grouped_df['mean_test_'+score] - grouped_df['std_test_'+score],
+                            grouped_df['mean_test_'+score] + grouped_df['std_test_'+score],
+                            alpha=0.2, color="navy", lw=lw)
+        axes[idx].set_xlabel(param_name, fontsize=12)
+        ymin, ymax = axes[idx].get_ylim()
+        # axes[idx].set_ylim(ymin, 0*ymax)
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.suptitle('Hyperparameters tuning', x=0.4, y=0.95, fontsize=15, fontweight='bold')
+    fig.legend(handles, labels, loc=1, ncol=1, fontsize=12)
+
+    fig.subplots_adjust(bottom=0.25, top=0.85, right=0.97)  
+    plt.show()
+
+
+
+## When searching for 2 best hyperparameters with gscv : plotting a heatmap of mean_test_score(cv)
+## the score displayed for each cell is the one for the best other parameters.
+
+def plot_2D_hyperparam_opt(scv, params=None, score = 'neg_root_mean_squared_error',
+                           title=None, ax=None):
+
+    scv_res = scv.cv_results_
+    df_scv = pd.DataFrame(scv_res)
+    if params: # example: params=['enet__alpha', 'enet__l1_ratio']
+        params_scv = ['param_'+p for p in params]
+    else:
+        params_scv = df_scv.columns[df_scv.columns.str.contains('param_')].to_list()
+        if len(params_scv)!=2:
+            print('WARNING : parameters to display were guessed,\
+                provide the params parameter with 2 parameters')
+            params_scv = params_scv[0:2]
+        else:
+            params_scv = params_scv
+    # Not suitable for 3D viz : takes the max among all other parameters !!!
+    max_scores = df_scv.groupby(params_scv).agg(lambda x: max(x))
+    sns.heatmap(max_scores.unstack()['mean_test_'+score],
+                annot=True, fmt='.4g', ax=ax);
+    # A CHANGER PEUT-ETRE EVENTUELLEMENT POUR AFFICHER DES NOMBRES COMPACTS, QUAND LES PARAMS SONT DES NOMBRES
+    # print(plt.gca().get_yticklabels()[1].get_text())
+    # plt.gca().set_xticklabels = ['{:.4}'.format(x) if type(x)==np.number else x for x in plt.gca().get_xticklabels() ]
+    # plt.gca().set_yticklabels = ['{:.4}'.format(y) if type(y)==np.number else y for y in plt.gca().get_yticklabels() ]
+    if title is None:  title = score
+    plt.gcf().suptitle(title)
+
+'''
+Generate 3 plots: the test and training learning curve, the training
+samples vs fit times curve, the fit times vs score curve.
+'''
+
+from sklearn.model_selection import ShuffleSplit
+from matplotlib.lines import Line2D
+from sklearn.model_selection import learning_curve
+
+def plot_learning_curve(name_reg, estimator, X, y, ylim=None, cv=None,
+                        scoring='neg_root_mean_squared_error', score_name = "Score",
+                        file_name=None, dict_learn_curves=None,
+                        n_jobs=None, train_sizes=np.linspace(.1, 1.0, 5),
+                        c='r', axes=None, title=None):
+    if axes is None : fig, axes = plt.subplots(1, 3, figsize=(12, 3)) # plt.subplots(0, 3, figsize=(12, 3))
+
+    if dict_learn_curves is None: dict_learn_curves = {}
+
+    # If model with the same name already in dict_models, just takes existing model
+    if dict_learn_curves.get(name_reg, np.nan) is not np.nan:
+        print('-----Learning curve already exists - taking existing learning curve')
+        train_sizes, train_scores, test_scores, fit_times = \
+                         list(zip(*list(dict_learn_curves[name_reg].items())))[1]
+    
+    # Else computes new model and add to the dictionnary, and then to the pickle
+    else:
+        print('----- Learning curve not existing - computing...')
+
+        train_sizes, train_scores, test_scores, fit_times, _ = \
+        learning_curve(estimator, X, y, cv=cv, n_jobs=n_jobs,
+                     train_sizes=train_sizes, scoring = scoring,
+                       return_times=True) 
+        
+        d_ = {'train_sizes': train_sizes,
+          'train_scores': train_scores,
+          'test_scores': test_scores,
+          'fit_times': fit_times}
+        dict_learn_curves[name_reg] = d_
+        if file_name is not None:
+            with open(file_name, "wb") as f:
+                dill.dump(dict_learn_curves, f)
+            print("-----...learning curve dumped")
+        else:
+            print("-----...no file name to dump the learning curves dictionary")
+
+    train_scores_mean = np.mean(train_scores, axis=1)
+    train_scores_std = np.std(train_scores, axis=1)
+    test_scores_mean = np.mean(test_scores, axis=1)
+    test_scores_std = np.std(test_scores, axis=1)
+    fit_times_mean = np.mean(fit_times, axis=1)
+    fit_times_std = np.std(fit_times, axis=1)
+
+    # Plot learning curve
+    axes[0].grid()
+    axes[0].fill_between(train_sizes, train_scores_mean - train_scores_std,
+                         train_scores_mean + train_scores_std, alpha=0.15,
+                         color=c)
+    axes[0].fill_between(train_sizes, test_scores_mean - test_scores_std,
+                         test_scores_mean + test_scores_std, alpha=0.3,
+                         color=c)
+    axes[0].plot(train_sizes, train_scores_mean, 'o-', mfc=None, ms=3,
+                 color=c, ls = 'dashed',  label="Training score")
+    axes[0].plot(train_sizes, test_scores_mean, 'o-', ms=3,
+                 color=c, ls = 'solid',
+                 label="Cross-validation score")
+    axes[0].set_title("Learning curves")
+    if ylim is not None: axes[0].set_ylim(*ylim)
+    axes[0].set_xlabel("Training examples")
+    axes[0].set_ylabel(score_name)
+    
+    cust_leg = [Line2D([0], [0], color='k', ls = 'dashed', lw=2),
+                Line2D([0], [0], color='k', ls = 'solid', lw=2)]
+    axes[0].legend(cust_leg, ['Train (CV)', 'Test (CV)'],loc="best")
+
+    # Plot n_samples vs fit_times
+    axes[1].grid()
+    axes[1].plot(train_sizes, fit_times_mean,
+                 'o-', color=c, ms=3)
+    axes[1].fill_between(train_sizes, fit_times_mean - fit_times_std,
+                         fit_times_mean + fit_times_std, color=c, alpha=0.2)
+    axes[1].set_xlabel("Training examples")
+    axes[1].set_ylabel("fit_times")
+    axes[1].set_title("Scalability of the model")
+
+    # Plot fit_time vs score
+    axes[2].grid()
+    axes[2].plot(fit_times_mean, test_scores_mean,
+                 'o-', ms=3, color=c, label=name_reg)
+    axes[2].fill_between(fit_times_mean, test_scores_mean - test_scores_std,
+                         test_scores_mean + test_scores_std, color=c, alpha=0.2)
+    axes[2].set_xlabel("fit_times")
+    axes[2].set_ylabel(score_name)
+    axes[2].set_title("Performance of the model")
+    if ylim is not None: axes[2].set_ylim(*ylim)
+    axes[2].legend(loc=2, prop={'size': 10})# bbox_to_anchor = (0.2,1.1), ncol=4
+
+    plt.gcf().set_facecolor('w')
+    if title is not None:
+        plt.gcf().suptitle(title, fontsize=15, fontweight='bold')
+        plt.tight_layout(rect=(0,0,1,0.92))
+    else:
+        plt.tight_layout()
+    return plt
+
+
+# '''permutation importance using sklearn '''
+# from sklearn.inspection import permutation_importance
+
+# def plot_perm_importance(model, name_reg, X, y, scoring='r2',
+#                          dict_perm_imp=None, file_name=None, figsize=(12,3)):
+
+#     # If model with the same name already in dict_models, just takes existing model
+#     if dict_perm_imp.get(name_reg, np.nan) is not np.nan:
+#         print('-----Permutation importance - taking existing model')
+#         ser = dict_perm_imp[name_reg]
+#     # Else computes new model and add to the dictionnary, and then to the pickle
+#     else:
+#         print('-----Permutation importance not existing - computing...')
+#         results = permutation_importance(model, X, y, scoring=scoring)
+#         ser = pd.Series(results.importances_mean, index = X.columns)
+        
+#     dict_perm_imp[name_reg] = ser
+
+#     with open(file_name, "wb") as f:
+#         dill.dump(dict_perm_imp, f)
+#     print("-----...model dumped")
+
+#     fig, ax = plt.subplots()
+#     ser.sort_values(ascending=False).plot.bar(color='grey');
+#     plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha="right" )
+#     fig.set_size_inches(figsize)
+#     plt.show()
+
+#     return dict_perm_imp
+# '''Plotting the feature importance of a model'''
+
+
+# def plot_model_feat_imp(name_reg, model, figsize=(15, 3)):
+#     # Getting the names of the transformed columns
+#     step_ct = model.named_steps['preproc'].named_steps['cust_trans']
+#     col_names = step_ct.get_feature_names()
+#     # Getting the list of the coefficients (wether usinf 'coef_' or 'feature_importances')
+#     step_reg = model.named_steps[name_reg]
+#     if hasattr(step_reg, "coef_"):
+#         col_coefs = step_reg.coef_
+#     elif hasattr(step_reg, "feature_importances_"):
+#         col_coefs = step_reg.feature_importances_
+#     else:
+#         print("ERROR: This regressor has no 'coef_' or 'feature_importances_' attribute")
+#     nb_feat = col_coefs.size
+#     ser = pd.Series(col_coefs, index=col_names[:nb_feat])
+
+#     fig, ax = plt.subplots()
+#     ser.sort_values(ascending=False).plot.bar(color='red');
+#     plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha="right")
+#     fig.set_size_inches(figsize)
+#     plt.show()
