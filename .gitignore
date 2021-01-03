@@ -1,6 +1,7 @@
 __pycache__
 .ipynb_checkpoints
 DATA
+PICKLES
 RESOURCE
 NOTEBOOKS/.py_files
 NOTEBOOKS/.log

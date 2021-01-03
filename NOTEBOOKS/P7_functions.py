@@ -677,18 +677,20 @@ class LOFSampleFilter(BaseEstimator, TransformerMixin):
         lcf = LocalOutlierFactor(n_neighbors=self.n_neighbors,
                                  contamination=self.contamination,
                                  **self.kwargs)
-        self.samplefilter = pd.Series(lcf.fit_predict(X))
-        self.samplefilter = self.samplefilter.replace({1: True, # inliners
+        samplefilter = pd.Series(lcf.fit_predict(X))
+        samplefilter = samplefilter.replace({1: True, # inliners
                                           -1: False}) # outliers
+        # computes the filtered dataframe
+        self.X_mod = X.loc[samplefilter.values]
+        if y is not None:
+            self.y_mod = y.loc[samplefilter.values]
         return self
 
     def transform(self, X, y=None, copy=None):
-        X_mod = X.loc[self.samplefilter.values]
         if y is not None:
-            y_mod = y.loc[self.samplefilter.values]
-            return X_mod, y_mod
+            return self.X_mod, self.y_mod
         else:
-            return X_mod
+            return self.X_mod
 
     def fit_transform(self, X, y=None, **fit_params):
         if y is None:
@@ -1074,6 +1076,7 @@ samples vs fit times curve, the fit times vs score curve.
 from sklearn.model_selection import ShuffleSplit
 from matplotlib.lines import Line2D
 from sklearn.model_selection import learning_curve
+import dill
 
 def plot_learning_curve(name_reg, estimator, X, y, ylim=None, cv=None,
                         scoring='neg_root_mean_squared_error', score_name = "Score",
@@ -1171,6 +1174,79 @@ def plot_learning_curve(name_reg, estimator, X, y, ylim=None, cv=None,
     return plt
 
 
+'''
+Takes a confusion matrix (best if diagonal maximized) with true categories as
+indices and clusters as columns (can be obtained using the function
+'confusion_matrix_clust', which ensures the diagonal values are maximum i.e.
+the best bijective correponding cat-clut pairs have been found),
+then plot the sankey confusion matrix.
+Use the option static to plot a static image of the original interactive graph.
+
+NB: the code below needs to be run if you are on colab
+
+    # in order to get orca to be installed in colab (to display static plotly graphs)
+    !pip install plotly>=4.0.0
+    !wget https://github.com/plotly/orca/releases/download/v1.2.1/orca-1.2.1-x86_64.AppImage -O /usr/local/bin/orca
+    !chmod +x /usr/local/bin/orca
+    !apt-get install xvfb libgtk2.0-0 libgconf-2-4
+'''
+
+import plotly.graph_objects as go
+from IPython.display import Image
+import seaborn as sns
+
+def plot_sankey_confusion_mat(cm, static=False, figsize=(2, 1.7),
+                              font_size=14, scale=1, palette = 'tab10'):
+
+    n_cat = cm.shape[0]
+    n_clust = cm.shape[1]
+    source = np.array([n_clust*[i] for i in range(n_cat)]).ravel()
+    target = np.array([[i] for i in range(n_cat,n_clust+n_cat)]*n_cat).ravel()
+    value = cm.values.ravel()
+    nodes_lab = list(cm.index)+list(cm.columns)
+    alpha_nodes, alpha_links = 0.7, 0.3
+    my_pal = sns.color_palette(palette, max(cm.shape))
+    pal_nodes_cat = list([f'rgba({r},{g},{b},{alpha_nodes})' \
+                        for r, g, b in my_pal[:n_cat]])
+    pal_nodes_clust = list([f'rgba({r},{g},{b},{alpha_nodes})' \
+                            for r, g, b in my_pal[:n_clust]])
+    nodes_colors = (pal_nodes_cat + pal_nodes_clust)
+
+    pal_links = list([f'rgba({r},{g},{b},{alpha_links})' for r, g, b in my_pal[:n_cat]])
+    dict_links_colors = dict(zip(range(n_cat), pal_links))
+    links_colors = np.vectorize(dict_links_colors.__getitem__)(source)
+
+    # Prepare the graph
+    fig = go.Figure(data=[go.Sankey(node = dict(pad = 15,
+                                                thickness = 20,
+                                                line = dict(color = "black",
+                                                            width = 0.5),
+                                                label = nodes_lab,
+                                                color = nodes_colors),
+                                    link = dict(source = source,
+                                                target = target,
+                                                value = value,
+                                                # label = ,
+                                                color = links_colors,
+                                                ))])
+    # title
+    fig.update_layout(title_text="Sankey confusion diagram | \
+true categories vs. clusters", font_size=font_size)
+    if static:
+        w, h = figsize
+        img_bytes = fig.to_image(format="png", width=w, height=h, scale=scale)
+        # Image(img_bytes)
+        return img_bytes
+    else:
+        fig.show()
+
+
+
+
+
+
+
+
 # '''permutation importance using sklearn '''
 # from sklearn.inspection import permutation_importance
 
@@ -1223,3 +1299,4 @@ def plot_learning_curve(name_reg, estimator, X, y, ylim=None, cv=None,
 #     plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha="right")
 #     fig.set_size_inches(figsize)
 #     plt.show()
+
