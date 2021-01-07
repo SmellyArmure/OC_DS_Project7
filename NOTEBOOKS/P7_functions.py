@@ -977,80 +977,85 @@ def plot_projection(X, y, model=None, ser_clust = None, proj='PCA',
     ax.set_xlabel('ax 1'), ax.set_ylabel('ax 2')
 
 
-
-
-'''Plotting one given score for all or a selection of the hyperparameters tested with a gsearch
+'''Plotting one given score for all or a selection of the hyperparameters tested with Optunasearchcv
 Can choose the aggregation function for the score on all other parameters
 option for using pooled standard deviation in stead of regular std'''
 
-def plot_hyperparam_tuning(gs, grid_params, params=None, score='score',
-                           pooled_std=False, agg_func=np.mean):
-
+def plot_hyperparam_tuning_optuna(gs, grid_params, params=None, score='score', figsize=(12,7),
+                           pooled_std=False, agg_func=np.mean, n_cols=4):
+    
     if params is not None:
         grid_params = {k:v for (k,v) in grid_params.items() if k in params}
+    
+    df = pd.DataFrame(gs.trials_dataframe())
+    
+    results = ['user_attrs_mean_train_score',
+               'user_attrs_mean_test_score',
+               'user_attrs_std_train_score',
+               'user_attrs_std_test_score']
+    
+    fig = plt.figure(figsize=figsize)
 
-    def pooled_var(stds):
-        n = 5 # size of each group
-        return np.sqrt(sum((n-1)*(stds**2))/ len(stds)*(n-1))
-    # recalculates the standard deviation using pooled variance
-    std_func = pooled_var if pooled_std else np.std
-
-    df = pd.DataFrame(gs.cv_results_)
-    results = ['mean_test_'+score,
-                'mean_train_'+score,
-                'std_test_'+score, 
-                'std_train_'+score]
-
-    fig, axes = plt.subplots(1, len(grid_params), 
-                            figsize = (3.2*len(grid_params), 3),
-                            sharey='row')
-    axes[0].set_ylabel(score, fontsize=12)
-
-    for idx, (param_name, param_range) in enumerate(grid_params.items()):
-        grouped_df = df.groupby('param_'+param_name)[results]\
-            .agg({'mean_train_'+score: agg_func,
-                'mean_test_'+score: agg_func,
-                'std_train_'+score: std_func,
-                'std_test_'+score: std_func})
-        previous_group = df.groupby(f'param_{param_name}')[results]
+    n_tot = len(grid_params.keys())
+    n_rows = (n_tot//n_cols)+((n_tot%n_cols)>0)*1
+    
+    for idx, param_name in enumerate(grid_params.keys(),1):
+        
+        if type(param_distributions[param_name]) == optuna.distributions.LogUniformDistribution :
+            log_scale_on = True
+        else:
+            log_scale_on = False
+        
+        ax = fig.add_subplot(n_rows, n_cols, idx)
+        grouped_df = df.groupby('params_'+param_name)[results].agg(np.mean)
         lw = 2
-        axes[idx].plot(param_range, grouped_df['mean_train_'+score], label="Train (CV)",
+        param_range = list(grouped_df.index)
+
+        ax.plot(param_range, grouped_df['user_attrs_mean_train_score'], label="Train (CV)",
                     color="darkorange",marker='o',ms=3, lw=lw)
-        axes[idx].fill_between(param_range,
-                            grouped_df['mean_train_'+score] - grouped_df['std_train_'+score],
-                            grouped_df['mean_train_'+score] + grouped_df['std_train_'+score], 
-                            alpha=0.2, color="darkorange", lw=lw)
-        axes[idx].plot(param_range, grouped_df['mean_test_'+score],
-                    label="Test (CV)", marker='o',ms=3, color="navy", lw=lw)
-        axes[idx].fill_between(param_range,
-                            grouped_df['mean_test_'+score] - grouped_df['std_test_'+score],
-                            grouped_df['mean_test_'+score] + grouped_df['std_test_'+score],
-                            alpha=0.2, color="navy", lw=lw)
-        axes[idx].set_xlabel(param_name, fontsize=12)
-        ymin, ymax = axes[idx].get_ylim()
+        ax.fill_between(param_range,
+                               grouped_df['user_attrs_mean_train_score'] - grouped_df['user_attrs_std_train_score'],
+                               grouped_df['user_attrs_mean_train_score'] + grouped_df['user_attrs_std_train_score'], 
+                               alpha=0.2, color="darkorange", lw=lw)
+
+        ax.plot(param_range, grouped_df['user_attrs_mean_test_score'],
+                       label="Test (CV)", marker='o', ms=3, color="navy", lw=lw)
+        ax.fill_between(param_range,
+                               grouped_df['user_attrs_mean_test_score'] - grouped_df['user_attrs_std_test_score'],
+                               grouped_df['user_attrs_mean_test_score'] + grouped_df['user_attrs_std_test_score'],
+                               alpha=0.2, color="navy", lw=lw)
+        
+        if log_scale_on:
+            ax.set_xscale('log')
+
+        ax.set_xlabel(param_name, fontsize=12)
+        ymin, ymax = ax.get_ylim()
         # axes[idx].set_ylim(ymin, 0*ymax)
 
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.suptitle('Hyperparameters tuning', x=0.4, y=0.95, fontsize=15, fontweight='bold')
+    handles, labels = ax.get_legend_handles_labels()
+    
     fig.legend(handles, labels, loc=1, ncol=1, fontsize=12)
 
-    fig.subplots_adjust(bottom=0.25, top=0.85, right=0.97)  
+#     fig.subplots_adjust(bottom=0.25, top=0.85, right=0.97)  
+    
+    fig.suptitle('Hyperparameters tuning', x=0.4, y=0.95, fontsize=15, fontweight='bold')
+    plt.tight_layout(rect=[0,0,1,0.92])
     plt.show()
-
 
 
 ## When searching for 2 best hyperparameters with gscv : plotting a heatmap of mean_test_score(cv)
 ## the score displayed for each cell is the one for the best other parameters.
 
-def plot_2D_hyperparam_opt(scv, params=None, score = 'neg_root_mean_squared_error',
-                           title=None, ax=None):
+from matplotlib.ticker import FormatStrFormatter
 
-    scv_res = scv.cv_results_
-    df_scv = pd.DataFrame(scv_res)
+def plot_2D_hyperparam_tuning_optuna(scv, params=None, score=None,
+                                     title=None, fmt='.4g', ax=None):
+
+    df_scv = pd.DataFrame(scv.trials_dataframe())
     if params: # example: params=['enet__alpha', 'enet__l1_ratio']
-        params_scv = ['param_'+p for p in params]
+        params_scv = ['params_'+p for p in params]
     else:
-        params_scv = df_scv.columns[df_scv.columns.str.contains('param_')].to_list()
+        params_scv = df_scv.columns[df_scv.columns.str.contains('params_')].to_list()
         if len(params_scv)!=2:
             print('WARNING : parameters to display were guessed,\
                 provide the params parameter with 2 parameters')
@@ -1059,14 +1064,12 @@ def plot_2D_hyperparam_opt(scv, params=None, score = 'neg_root_mean_squared_erro
             params_scv = params_scv
     # Not suitable for 3D viz : takes the max among all other parameters !!!
     max_scores = df_scv.groupby(params_scv).agg(lambda x: max(x))
-    sns.heatmap(max_scores.unstack()['mean_test_'+score],
-                annot=True, fmt='.4g', ax=ax);
-    # A CHANGER PEUT-ETRE EVENTUELLEMENT POUR AFFICHER DES NOMBRES COMPACTS, QUAND LES PARAMS SONT DES NOMBRES
-    # print(plt.gca().get_yticklabels()[1].get_text())
-    # plt.gca().set_xticklabels = ['{:.4}'.format(x) if type(x)==np.number else x for x in plt.gca().get_xticklabels() ]
-    # plt.gca().set_yticklabels = ['{:.4}'.format(y) if type(y)==np.number else y for y in plt.gca().get_yticklabels() ]
+    sns.heatmap(max_scores.unstack()['user_attrs_mean_test_score'],
+                annot=True, fmt=fmt, ax=ax);
     if title is None:  title = score
-    plt.gcf().suptitle(title)
+    plt.gca().set_title(title)
+    ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+    ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
 '''
 Generate 3 plots: the test and training learning curve, the training
@@ -1171,7 +1174,7 @@ def plot_learning_curve(name_reg, estimator, X, y, ylim=None, cv=None,
         plt.tight_layout(rect=(0,0,1,0.92))
     else:
         plt.tight_layout()
-    return plt
+    return dict_learn_curves
 
 
 '''
@@ -1196,7 +1199,8 @@ from IPython.display import Image
 import seaborn as sns
 
 def plot_sankey_confusion_mat(cm, static=False, figsize=(2, 1.7),
-                              font_size=14, scale=1, palette = 'tab10'):
+                              font_size=14, scale=1, title=None,
+                              palette = 'tab10'):
 
     n_cat = cm.shape[0]
     n_clust = cm.shape[1]
@@ -1230,8 +1234,7 @@ def plot_sankey_confusion_mat(cm, static=False, figsize=(2, 1.7),
                                                 color = links_colors,
                                                 ))])
     # title
-    fig.update_layout(title_text="Sankey confusion diagram | \
-true categories vs. clusters", font_size=font_size)
+    fig.update_layout(title_text=title, font_size=font_size)
     if static:
         w, h = figsize
         img_bytes = fig.to_image(format="png", width=w, height=h, scale=scale)
@@ -1239,12 +1242,6 @@ true categories vs. clusters", font_size=font_size)
         return img_bytes
     else:
         fig.show()
-
-
-
-
-
-
 
 
 # '''permutation importance using sklearn '''
