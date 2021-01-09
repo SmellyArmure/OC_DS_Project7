@@ -981,6 +981,8 @@ def plot_projection(X, y, model=None, ser_clust = None, proj='PCA',
 Can choose the aggregation function for the score on all other parameters
 option for using pooled standard deviation in stead of regular std'''
 
+from optuna.distributions import LogUniformDistribution 
+
 def plot_hyperparam_tuning_optuna(gs, grid_params, params=None, score='score', figsize=(12,7),
                            pooled_std=False, agg_func=np.mean, n_cols=4):
     
@@ -1001,7 +1003,7 @@ def plot_hyperparam_tuning_optuna(gs, grid_params, params=None, score='score', f
     
     for idx, param_name in enumerate(grid_params.keys(),1):
         
-        if type(param_distributions[param_name]) == optuna.distributions.LogUniformDistribution :
+        if type(grid_params[param_name]) == LogUniformDistribution :
             log_scale_on = True
         else:
             log_scale_on = False
@@ -1050,7 +1052,7 @@ from matplotlib.ticker import FormatStrFormatter
 
 def plot_2D_hyperparam_tuning_optuna(scv, params=None, score=None,
                                      title=None, fmt='.4g', ax=None):
-
+    
     df_scv = pd.DataFrame(scv.trials_dataframe())
     if params: # example: params=['enet__alpha', 'enet__l1_ratio']
         params_scv = ['params_'+p for p in params]
@@ -1064,8 +1066,9 @@ def plot_2D_hyperparam_tuning_optuna(scv, params=None, score=None,
             params_scv = params_scv
     # Not suitable for 3D viz : takes the max among all other parameters !!!
     max_scores = df_scv.groupby(params_scv).agg(lambda x: max(x))
+    annot = fmt is not None
     sns.heatmap(max_scores.unstack()['user_attrs_mean_test_score'],
-                annot=True, fmt=fmt, ax=ax);
+                annot=annot, fmt=fmt, ax=ax);
     if title is None:  title = score
     plt.gca().set_title(title)
     ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
