@@ -1,0 +1,58 @@
+flavors:
+  python_function:
+    env: conda.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    python_version: 3.8.5
+  sklearn:
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 0.23.2
+signature:
+  inputs: '[{"name": "Bur_CB_AMT_CREDIT_MAX_OVERDUE__max", "type": "double"}, {"name":
+    "Bur_CB_AMT_CREDIT_SUM_OVERDUE__sum", "type": "double"}, {"name": "Bur_CB_CR_TY_Microloan__sum",
+    "type": "double"}, {"name": "PA_PrLCash_SK_DPD_DEF__mean__mean", "type": "double"},
+    {"name": "PA_DAYS_FIRST_DUE__min", "type": "double"}, {"name": "DEF_60_CNT_SOCIAL_CIRCLE",
+    "type": "double"}, {"name": "Bur_CB_AMT_CREDIT_SUM_LIMIT__sum", "type": "double"},
+    {"name": "PA_PrLCash_SK_DPD__mean__mean", "type": "double"}, {"name": "PA_DAYS_LAST_DUE_1ST_VERSION__min",
+    "type": "double"}, {"name": "PA_PrLI_DELAY_DAYS_INSTALMENT__max__max", "type":
+    "double"}, {"name": "OBS_60_CNT_SOCIAL_CIRCLE", "type": "double"}, {"name": "Bur_CB_DAYS_CREDIT_ENDDATE__max",
+    "type": "double"}, {"name": "Bur_CB_ST__mode_X__sum", "type": "double"}, {"name":
+    "DAYS_EMPLOYED_PERC", "type": "double"}, {"name": "PA_DAYS_FIRST_DUE__max", "type":
+    "double"}, {"name": "Bur_CB_AMT_CREDIT_SUM_DEBT__sum", "type": "double"}, {"name":
+    "PA_PrLI_NUM_INSTALMENT_NUMBER__max__max", "type": "double"}, {"name": "PA_PrLCash_N_CONTR_ST_Completed__sum__sum",
+    "type": "double"}, {"name": "PA_PrLI_NUM_INSTALMENT_VERSION__max__max", "type":
+    "double"}, {"name": "AMT_REQ_CREDIT_BUREAU_YEAR", "type": "double"}, {"name":
+    "Bur_CB_STATUS__size__sum", "type": "double"}, {"name": "PA_AMT_PER_MONTH__mean",
+    "type": "double"}, {"name": "Bur_CB_AMT_CREDIT_SUM__mean", "type": "double"},
+    {"name": "PA_PrL_N_PORTF_Cards__sum", "type": "double"}, {"name": "DAYS_LAST_PHONE_CHANGE",
+    "type": "double"}, {"name": "PA_PrLI_DELAY_DAYS_INSTALMENT__mean__mean", "type":
+    "double"}, {"name": "PA_PrLCash_MONTHS_BALANCE__abs_min__abs_min", "type": "double"},
+    {"name": "DAYS_REGISTRATION", "type": "double"}, {"name": "PA_AMT_DIFF_PCT__mean",
+    "type": "double"}, {"name": "REGION_POPULATION_RELATIVE", "type": "double"}, {"name":
+    "Bur_CB_AMT_CREDIT_SUM__sum", "type": "double"}, {"name": "PA_PrLI_AMT_INSTALMENT__max__max",
+    "type": "double"}, {"name": "PA_DAYS_PROLONG_PCT__max", "type": "double"}, {"name":
+    "PA_DAYS_TOT_DURATION__amp", "type": "double"}, {"name": "Bur_CB_CR_TY_Consumer
+    credit__sum", "type": "double"}, {"name": "DAYS_ID_PUBLISH", "type": "long"},
+    {"name": "PA_PrL_N_PORTF_Cash__sum", "type": "double"}, {"name": "PA_PrL_N_PORTF_POS__sum",
+    "type": "double"}, {"name": "PA_AMT_DIFF_PCT__max", "type": "double"}, {"name":
+    "Bur_CB_DAYS_CREDIT__abs_min", "type": "double"}, {"name": "PA_PrLI_AMT_INSTALMENT__mean__mean",
+    "type": "double"}, {"name": "Bur_CB_CR_ACT_Active__sum", "type": "double"}, {"name":
+    "PA_DAYS_PROLONG_PCT__mean", "type": "double"}, {"name": "INCOME_CREDIT_PERC",
+    "type": "double"}, {"name": "INCOME_PER_PERSON", "type": "double"}, {"name": "EXT_SOURCE_2",
+    "type": "double"}, {"name": "PA_DAYS_TOT_DURATION__mean", "type": "double"}, {"name":
+    "ANNUITY_INCOME_PERC", "type": "double"}, {"name": "PA_DAYS_TOT_DURATION__sum",
+    "type": "double"}, {"name": "AMT_INCOME_TOTAL", "type": "double"}, {"name": "EXT_SOURCE_3",
+    "type": "double"}, {"name": "PA_AMT_CREDIT__sum", "type": "double"}, {"name":
+    "PA_AMT_ANNUITY__mean", "type": "double"}, {"name": "PA_CNT_PAYMENT__mean", "type":
+    "double"}, {"name": "REGION_RATING_CLIENT_W_CITY", "type": "long"}, {"name": "PA_AMT_CREDIT__mean",
+    "type": "double"}, {"name": "AMT_CREDIT", "type": "double"}, {"name": "PAYMENT_RATE",
+    "type": "double"}, {"name": "DAYS_BIRTH", "type": "long"}, {"name": "NAME_CONTRACT_TYPE",
+    "type": "string"}, {"name": "CODE_GENDER", "type": "string"}, {"name": "FLAG_OWN_CAR",
+    "type": "string"}, {"name": "FLAG_OWN_REALTY", "type": "string"}, {"name": "NAME_TYPE_SUITE",
+    "type": "string"}, {"name": "NAME_INCOME_TYPE", "type": "string"}, {"name": "NAME_EDUCATION_TYPE",
+    "type": "string"}, {"name": "NAME_FAMILY_STATUS", "type": "string"}, {"name":
+    "NAME_HOUSING_TYPE", "type": "string"}, {"name": "OCCUPATION_TYPE", "type": "string"},
+    {"name": "ORGANIZATION_TYPE", "type": "string"}]'
+  outputs: '[{"type": "long"}]'
+utc_time_created: '2021-01-12 19:19:35.125091'

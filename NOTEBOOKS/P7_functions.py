@@ -878,9 +878,13 @@ NB: if the model wa already fitted, does not refit.'''
 
 import seaborn as sns
 
-def plot_projection(X, y, model=None, ser_clust = None, proj='PCA',
+import seaborn as sns
+
+def plot_projection(X, y, model=None, plot_only_idx=None,
+                    ser_clust = None, proj='PCA',
                     tw_n_neigh=5, title=None, bboxtoanchor=None,
-                    figsize=(5, 3), size=1, palette='tab10',
+                    figsize=(5, 3), size=1, palette='tab10', show_centers=True,
+                    dict_proj=None, dict_proj_centers=None,
                     legend_on=False, fig=None, ax=None, random_state=14):
 
     fig = plt.figure(figsize=figsize) if fig is None else fig
@@ -888,24 +892,27 @@ def plot_projection(X, y, model=None, ser_clust = None, proj='PCA',
 
     # a1 - if model : computes clusters, clusters centers and plot with colors
     if model is not None:
+        
+        # compute the list of 2D coordinate of the points if not in arguments
+        if dict_proj is None:
+        
+            # Computes the axes for projection with centers
+            # (uses fitted model if already fitted)
+            dict_proj, dict_proj_centers, model = prepare_2D_axes(X, y,
+                                                                  proj=[proj],
+                                                                  model=model,
+                                                                  centers_on=True,
+                                                                  random_state=random_state)
 
-        # Computes the axes for projection with centers
-        # (uses fitted model if already fitted)
-        dict_proj, dict_proj_centers, model = prepare_2D_axes(X, y,
-                                                              proj=[proj],
-                                                              model=model,
-                                                              centers_on=True,
-                                                              random_state=random_state)
-
-        # ...or using model already fitted in prepare_2D_axes to get it
-        #### all clusterers don't have .predict/labels_ method -> changed
-        if hasattr(model, 'labels_'):
-            clust = model.labels_
-        else:
-            clust = model.predict(X)
-        ser_clust = pd.Series(clust,
-                                index=X.index,
-                                name='Clust')
+            # ...or using model already fitted in prepare_2D_axes to get it
+            #### all clusterers don't have .predict/labels_ method -> changed
+            if hasattr(model, 'labels_'):
+                clust = model.labels_
+            else:
+                clust = model.predict(X)
+            ser_clust = pd.Series(clust,
+                                    index=X.index,
+                                    name='Clust')
         
     # a2 - if no model but ser_clust is given, plot with colors
     elif ser_clust is not None:
@@ -920,11 +927,18 @@ def plot_projection(X, y, model=None, ser_clust = None, proj='PCA',
         colors = sns.color_palette(palette, n_clust).as_hex()
 
     # Computing the global trustworthiness
-    trustw = trustworthiness(X, dict_proj[proj],
-                            n_neighbors=tw_n_neigh, metric='euclidean')
-    # Computing the trustworthiness category by category
-    ser_tw_clust = groups_trustworthiness(X, dict_proj[proj], ser_clust,
-                                          n_neighbors=tw_n_neigh)
+    if tw_n_neigh is not None:
+        trustw = trustworthiness(X, dict_proj[proj],
+                                n_neighbors=tw_n_neigh, metric='euclidean')
+        trustw = "{:.2f}".format(trustw)
+        # Computing the trustworthiness category by category
+        ser_tw_clust = groups_trustworthiness(X, dict_proj[proj], ser_clust,
+                                              n_neighbors=tw_n_neigh)
+#         tw_title = ser_tw_clust
+    else:
+        trustw = ''
+#         tw_title = ''
+        
 
     # b1 - if ser_clust exists (either calculated from model or given)
     if ser_clust is not None:
@@ -933,30 +947,39 @@ def plot_projection(X, y, model=None, ser_clust = None, proj='PCA',
         # for i in range(n_clust):
         for i, name_clust in enumerate(ser_clust.unique()):
             ind = ser_clust[ser_clust == name_clust].index
+            
+            # plot only a selection of points
+            if plot_only_idx is not None:
+                ind = [i for i in ind if i in plot_only_idx]
+                
             ax.scatter(dict_proj[proj].loc[ind].iloc[:, 0],
                        dict_proj[proj].loc[ind].iloc[:, 1],
                        s=size, alpha=0.7, c=colors[i], zorder=1)
-
-            # Showing the clusters centers
-            ax.scatter(dict_proj_centers[proj].iloc[:, 0].loc[name_clust],
-                        dict_proj_centers[proj].iloc[:, 1].loc[name_clust],
-                        marker='o', c=colors[i], alpha=0.7, s=150,
-                       edgecolor='k',
-                       label="{}: {} | tw={:0.2f}".format(i, name_clust,
-                                                          ser_tw_clust[name_clust]),
-                       zorder=10) # for the labels only
-            # Showing the clusters centers labels (number)
-            ax.scatter(dict_proj_centers[proj].iloc[:, 0].loc[name_clust],
-                        dict_proj_centers[proj].iloc[:, 1].loc[name_clust],
-                        marker=r"$ {} $".format(i),#
-                        c='k', alpha=1, s=70, zorder=100)
+            
+            if show_centers:
+                if tw_n_neigh is not None:
+                    tw_title =  "{:.2f}".format(ser_tw_clust[name_clust])
+                else:
+                    tw_title = ''
+                # Showing the clusters centers
+                ax.scatter(dict_proj_centers[proj].iloc[:, 0].loc[name_clust],
+                            dict_proj_centers[proj].iloc[:, 1].loc[name_clust],
+                            marker='o', c=colors[i], alpha=0.7, s=150,
+                           edgecolor='k',
+                           label="{}: {} | tw={}".format(i, name_clust, tw_title),
+                           zorder=10) # for the labels only
+                # Showing the clusters centers labels (number)
+                ax.scatter(dict_proj_centers[proj].iloc[:, 0].loc[name_clust],
+                            dict_proj_centers[proj].iloc[:, 1].loc[name_clust],
+                            marker=r"$ {} $".format(i),#
+                            c='k', alpha=1, s=70, zorder=100)
+            
             if legend_on:
                 plt.legend().get_frame().set_alpha(0.3)
             if bboxtoanchor is not None:
                 plt.legend(bbox_to_anchor=bboxtoanchor)
             else: 
                 plt.legend()
-
 
     # b2 - if no ser_clust: only plot points in grey
     else:
@@ -965,16 +988,21 @@ def plot_projection(X, y, model=None, ser_clust = None, proj='PCA',
                                     proj=[proj],
                                     centers_on=False,
                                     random_state=random_state)
-        # Plotting the point in grey
-        ax.scatter(dict_proj[proj].iloc[:, 0],
-                   dict_proj[proj].iloc[:, 1],
+        
+        # plot only a selection of points
+        if plot_only_idx is not None:
+            ind = [i for i in dict_proj[proj].index if i in plot_only_idx]
+        
+        # Plotting the points in grey
+        ax.scatter(dict_proj[proj].iloc[:, 0].loc[ind],
+                   dict_proj[proj].iloc[:, 1].loc[ind],
                    s=size, alpha=0.7, c='grey')
 
-    title = "Projection: " + proj + "(trustworthiness: {:.2f})".format(trustw)\
-             if title is None else title
-    ax.set_title(title + "\n(trustworthiness: {:.2f})".format(trustw),
-                 fontsize=12, fontweight='bold')
-    ax.set_xlabel('ax 1'), ax.set_ylabel('ax 2')
+#     title = "Projection: " + proj if title is None else title
+    if title is not None:
+        ax.set_title(title + f"\n(trustworthiness: {trustw})",
+                     fontsize=12, fontweight='bold')
+    ax.set_xlabel('proj ax 1'), ax.set_ylabel('proj ax 2')
 
 
 '''Plotting one given score for all or a selection of the hyperparameters tested with Optunasearchcv
