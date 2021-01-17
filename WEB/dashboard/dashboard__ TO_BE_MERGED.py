@@ -38,7 +38,6 @@ f = open(r"thresh.txt", "r")
 thresh_retrieved = f.read()
 f.close()
 
-
 # import the data in the .py file
 path_file = '..\..\PICKLES\dict_cleaned.pkl'
 dict_data = load_data(path_file)

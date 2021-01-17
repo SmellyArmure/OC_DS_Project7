@@ -28,7 +28,7 @@ feat_desc = pd.read_csv("data/feat_desc.csv",
 with open('data\\dict_cleaned_samp.pkl', 'rb') as file:
     dict_cleaned = dill.load(file)
 # best model and best threshold
-with open('data\\bestmodel_thresh.pkl', 'rb') as file:
+with open('model\\bestmodel_thresh.pkl', 'rb') as file:
     best_model, thresh = dill.load(file)
 
 # compute processed data (first steps of the best_model pipeline)
@@ -106,11 +106,14 @@ def data_cust():
     sk_id_cust = int(request.args.get('SK_ID_CURR'))
     # Get the personal data for the customer (pd.Series)
     X_cust_ser = X_test.loc[sk_id_cust, :]
+    X_cust_proc_ser = X_te_featsel.loc[sk_id_cust, :]
     # Convert the pd.Series (df row) of customer's data to JSON
     X_cust_json = json.loads(X_cust_ser.to_json())
+    X_cust_proc_json = json.loads(X_cust_proc_ser.to_json())
     # Return the cleaned data
     return jsonify({'status': 'ok',
-    				'data': X_cust_json})
+    				'data': X_cust_json,
+    				'data_proc': X_cust_proc_json})
 
 # return data of 20 neighbors of one customer when requested (SK_ID_CURR)
 # Test : http://127.0.0.1:5000/api/neigh_cust/?SK_ID_CURR=100128
@@ -127,11 +130,27 @@ def neigh_cust():
                            return_distance=False).ravel()
     nearest_cust_idx = list(X_tr_featsel.iloc[idx].index)
     X_neigh_df = X_tr_featsel.loc[nearest_cust_idx, :]
+    y_neigh = y_train.loc[nearest_cust_idx]
     # Convert the pd.DataFrame (20 df rows) of customer's data to JSON
     X_neigh_json = json.loads(X_neigh_df.to_json())
+    y_neigh_json = json.loads(y_neigh.to_json())
     # Return the cleaned data jsonified
     return jsonify({'status': 'ok',
-    				'data': X_neigh_json})
+    				'X_neigh': X_neigh_json,
+    				'y_neigh': y_neigh_json})
+
+# return all data of training set when requested
+# Test : http://127.0.0.1:5000/api/all_proc_data/
+@app.route('/api/all_proc_data_tr/')
+def all_proc_data_tr():
+    # get all data from X_tr_featsel, X_te_featsel and y_train data
+    # and convert the pd.DataFrame (data to JSON
+    X_tr_featsel_json = json.loads(X_tr_featsel.to_json())
+    y_train_json = json.loads(y_train.to_json())
+    # Return the cleaned data jsonified
+    return jsonify({'status': 'ok',
+    				'X_tr_proc': X_tr_featsel_json,
+    				'y_train': y_train_json})
 
 # @app.route('/api/shap_values/')
 # # Test : http://127.0.0.1:5000/api/shap_values

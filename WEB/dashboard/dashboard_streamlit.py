@@ -9,7 +9,10 @@ import requests
 import json
 import pandas as pd
 import matplotlib.pyplot as plt
-
+# import plot function from P7_functions.py file
+import sys
+sys.path.insert(0, '..\\NOTEBOOKS')
+from P7_functions import plot_boxplot_var_by_target
 
 def main():
     # local API
@@ -42,7 +45,8 @@ def main():
         content = json.loads(response.content.decode('utf-8'))
         # convert data to pd.Series
         data_cust = pd.Series(content['data']).rename("SK_ID {}".format(select_sk_id))
-        return data_cust
+        data_cust_proc = pd.Series(content['data_proc']).rename("SK_ID {}".format(select_sk_id))
+        return data_cust, data_cust_proc
 
     # Get data from 20 nearest neighbors in train set (cached)
     @st.cache
@@ -53,11 +57,26 @@ def main():
         response = requests.get(NEIGH_DATA_API_URL)
         # convert from JSON format to Python dict
         content = json.loads(response.content.decode('utf-8'))
-        # convert data to pd.Series
-        neigh_cust = pd.DataFrame(content['data'])
-        return neigh_cust
+        # convert data to pd.DataFrame and pd.Series
+        X_neigh = pd.DataFrame(content['X_neigh'])
+        y_neigh = pd.Series(content['y_neigh'])
+        return X_neigh, y_neigh
 
-    # Get scoring (cached)
+    # Get all data in train set (cached)
+    @st.cache
+    def get_all_proc_data_tr():
+        # URL of the scoring API
+        ALL_PROC_DATA_API_URL = API_URL + "all_proc_data_tr/"
+        # save the response of API request
+        response = requests.get(ALL_PROC_DATA_API_URL)
+        # convert from JSON format to Python dict
+        content = json.loads(response.content.decode('utf-8'))
+        # convert data to pd.Series
+        X_tr_proc = pd.DataFrame(content['X_tr_proc'])
+        y_proc = pd.Series(content['y_train'])
+        return X_tr_proc, y_proc
+
+    # Get scoring of one applicant customer (cached)
     @st.cache
     def get_cust_scoring(select_sk_id):
         # URL of the scoring API
@@ -87,11 +106,13 @@ def main():
     #################################
     #################################
 
-    # Display the logo
-    image = Image.open('dashboard/logo.png')
-    st.sidebar.image(image, width=180)
     # Display the title
     st.title('Dashboard - Loan application customer scoring"')
+    st.subheader("Maryse MULLER - Parcours Data Science projet 7 - OpenClassrooms")
+
+    # Display the logo in the sidebar
+    image = Image.open('dashboard/logo.png')
+    st.sidebar.image(image, width=180)
 
     ##################################################
     # Select the customer's ID
@@ -127,23 +148,54 @@ def main():
     ##################################################
     # PERSONAL DATA
     ##################################################
+
     st.header('PERSONAL DATA BOXPLOT')
 
+    # Get personal data (unprocessed and preprocessed)
+    X_cust, X_cust_proc = get_data_cust(select_sk_id)
+
+    # Get 20 neighbors personal data (preprocessed)
+    X_neigh, y_neigh = get_data_neigh(select_sk_id)
+    y_neigh = y_neigh.replace({0: 'repaid (neighbors)',
+                               1: 'not repaid (neighbors)'})
+
+    # Get all preprocessed training data
+    X_tr_all, y_tr_all = get_all_proc_data_tr() # X_tr_proc, y_proc
+    y_tr_all = y_tr_all.replace({0: 'repaid (global)',
+                                 1: 'not repaid (global)'})
+
     if st.sidebar.checkbox('Show personal data'):
-        # Get personal data
-        cust_data = get_data_cust(select_sk_id)
 
         if st.checkbox('Show comparison with 20 neighbors data'):
-            # Get 20 neighbors personal data
-            neigh_data = get_data_neigh(select_sk_id)
-            # aggregate the values
-            neigh_data_agg = pd.DataFrame(neigh_data).mean().rename('Mean on 5000 sample')
-            # Concatenation of the information to display
-            df_display = pd.concat([cust_data, neigh_data_agg], axis=1)
+            df_display = X_cust
+            # # Aggregate the values
+            # X_neigh_agg = X_neigh.mean().rename('Mean on 5000 sample')
+            # # Concatenation of the information to display
+            # df_display = pd.concat([X_cust, X_neigh_agg], axis=1)
         else:
             # Display only personal_data
-            df_display = cust_data
+            df_display = X_cust
+
         st.dataframe(df_display)
+
+        #--------------------------------
+        # BOXPLOT FOR MAIN 10 VARIABLES
+        #--------------------------------
+
+        X_neigh = X_neigh
+        X_cust = X_cust_proc
+        # st.write(X_neigh.reset_index().columns[:-3], X_cust.reset_index().columns[:3])
+
+        main_cols = ['binary__CODE_GENDER', 'high_card__OCCUPATION_TYPE',
+                     'high_card__ORGANIZATION_TYPE', 'INCOME_CREDIT_PERC',
+                     'EXT_SOURCE_2', 'ANNUITY_INCOME_PERC', 'EXT_SOURCE_3',
+                     'AMT_CREDIT', 'PAYMENT_RATE', 'DAYS_BIRTH']
+
+        fig = plot_boxplot_var_by_target(X_tr_all, y_tr_all, X_neigh, y_neigh,
+                                         X_cust_proc, main_cols, figsize=(15,4))
+
+        st.pyplot(fig)
+        st.markdown('_Dispersion of the main features for random sample, 20 nearest neighbors and applicant customer_')
 
     ##################################################
     # SCORING
