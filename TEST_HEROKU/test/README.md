@@ -23,9 +23,7 @@ $ pip install -r requirements.txt
 
 
 # run the app
-$ python api_flask.py migrate
-$ python api_flask.py collectstatic
-
+$ python api_flask.py
 $ heroku local
 ```
 
@@ -38,6 +36,6 @@ Your app should now be running on [localhost:5000](http://localhost:5000/).
 $ heroku create
 $ git push heroku main
 
-$ heroku run python manage.py migrate
+$ heroku run python -a heroky createmanage.py migrate
 $ heroku open
 ```
