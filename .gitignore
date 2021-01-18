@@ -6,3 +6,7 @@ RESOURCE
 NOTEBOOKS/.py_files
 NOTEBOOKS/.log
 SOUTENANCE
+WEB/test_venv
+WEB/*.pyc
+WEB/.ipynb_checkpoints
+WEB/.env
