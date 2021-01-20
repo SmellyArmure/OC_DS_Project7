@@ -1290,8 +1290,9 @@ def plot_boxplot_var_by_target(X_all, y_all, X_neigh, y_neigh, X_cust, main_cols
     fig, ax = plt.subplots(figsize=figsize)
 
     # random sample of customers of the train set
-    df_melt_all = df_all.reset_index()\
-                .melt(id_vars=['index', 'TARGET'], # SK_ID_CURR
+    df_melt_all = df_all.reset_index()
+    df_melt_all.columns = ['index'] + list(df_melt_all.columns)[1:]
+    df_melt_all = df_melt_all.melt(id_vars=['index', 'TARGET'], # SK_ID_CURR
                       value_vars=main_cols,
                       var_name="variables",
                       value_name="values")
@@ -1300,8 +1301,9 @@ def plot_boxplot_var_by_target(X_all, y_all, X_neigh, y_neigh, X_cust, main_cols
                 ax=ax)
 
     # 20 nearest neighbors
-    df_melt_neigh = df_neigh.reset_index()\
-                            .melt(id_vars=['index', 'TARGET'], # SK_ID_CURR
+    df_melt_neigh = df_neigh.reset_index()
+    df_melt_neigh.columns = ['index'] + list(df_melt_neigh.columns)[1:]
+    df_melt_neigh = df_melt_neigh.melt(id_vars=['index', 'TARGET'], # SK_ID_CURR
                                   value_vars=main_cols,
                                   var_name="variables",
                                   value_name="values") 
