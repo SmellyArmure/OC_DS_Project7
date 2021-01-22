@@ -1377,3 +1377,95 @@ def plot_boxplot_var_by_target(X_all, y_all, X_neigh, y_neigh, X_cust, main_cols
 #     fig.set_size_inches(figsize)
 #     plt.show()
 
+'''
+Affiche les valeurs des clients en fonctions de deux paramètres en montrant leur classe
+Compare l'ensemble des clients par rapport aux plus proches voisins et au client choisi.
+X = données pour le calcul de la projection
+ser_clust = données pour la classification des points (2 classes) (pd.Series)
+n_display = items à tracer parmi toutes les données
+plot_highlight = liste des index des plus proches voisins
+X_cust = pd.Series des data de l'applicant customer
+figsize=(10, 6) 
+size=10
+fontsize=12
+columns=None : si None, alors projection sur toutes les variables, si plus de 2 projection
+'''
+
+from random  import sample
+from sklearn.manifold import trustworthiness
+import matplotlib.pyplot as plt
+# from sklearn.decomposition import PCA
+# from umap import UMAP
+from sklearn.manifold import TSNE
+
+def plot_scatter_projection(X, ser_clust, n_display, plot_highlight, X_cust,
+                            figsize=(10, 6), size=10, fontsize=12, columns=None):
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111)
+
+    X_all = pd.concat([X, X_cust], axis=0)
+
+    columns = X_all.columns if columns is None else columns
+
+    if len(columns) == 2 :
+        # if only 2 columns passed
+        df_data = X_all.loc[:, columns]
+        ax.set_title('Two features compared', fontsize=fontsize+2, fontweight='bold')
+        ax.set_xlabel(columns[0], fontsize=fontsize)
+        ax.set_ylabel(columns[1], fontsize=fontsize)
+
+    elif len(columns) > 2:
+        # if more than 2 columns passed
+        # Compute T-SNE projection
+        sne = TSNE(n_components=2, random_state=14)
+        df_proj = pd.DataFrame(tsne.fit_transform(X_all),
+                                       index=X_all.index,
+                                       columns=['t-SNE' + str(i) for i in range(2)])
+        trustw = trustworthiness(X_all, df_proj, n_neighbors=5, metric='euclidean')
+        trustw = "{:.2f}".format(trustw)
+        ax.set_title(f't-SNE projection (trustworthiness={trustw})',
+                     fontsize=fontsize+2, fontweight='bold')
+        df_data = df_proj
+        ax.set_xlabel("projection axis 1", fontsize=fontsize)
+        ax.set_ylabel("projection axis 2", fontsize=fontsize)
+
+    else:
+        # si une colonne seulement
+        df_data = pd.concat([X_all.loc[:, columns], X_all.loc[:, columns]], axis=1)
+        ax.set_title('One feature', fontsize=fontsize+2, fontweight='bold')
+        ax.set_xlabel(columns[0], fontsize=fontsize)
+        ax.set_ylabel(columns[0], fontsize=fontsize)
+
+
+    # Showing points, cluster by cluster
+    colors = ['green', 'red']
+    for i, name_clust in enumerate(ser_clust.unique()):
+        ind = ser_clust[ser_clust == name_clust].index
+
+
+        if n_display is not None:
+            display_samp = rd.sample(set(random_samp), 200)
+            ind = [i for i in ind if i in display_samp]
+        # plot only a random selection of random sample points
+        ax.scatter(df_data.loc[ind].iloc[:, 0],
+                   df_data.loc[ind].iloc[:, 1],
+                   s=size, alpha=0.7, c=colors[i], zorder=1,
+                  label=f"Random sample ({name_clust})")
+        # plot nearest neighbors
+        ind_neigh = nearest_cust_idx #[i for i in ind if i in nearest_cust_idx]
+        ax.scatter(df_data.loc[ind_neigh].iloc[:, 0],
+                   df_data.loc[ind_neigh].iloc[:, 1],
+                   s=size*5, alpha=0.7, c=colors[i], ec='k', zorder=3,
+                  label=f"Nearest neighbors ({name_clust})")
+
+    # plot the applicant customer
+    ax.scatter(df_data.loc[customer_idx:customer_idx].iloc[:, 0],
+               df_data.loc[customer_idx:customer_idx].iloc[:, 1],
+               s=size*10, alpha=0.7, c='yellow', ec='k', zorder=10,
+               label="Applicant customer")
+    
+    ax.tick_params(axis='both', which='major', labelsize=fontsize)
+    
+    ax.legend(prop={'size': fontsize-2})
+    plt.show()
