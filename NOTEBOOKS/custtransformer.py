@@ -1,4 +1,6 @@
-''' Builds a customizable column_transformer which parameters can be optimized in a GridSearchCV
+
+"""
+Builds a customizable column_transformer which parameters can be optimized in a GridSearchCV
 CATEGORICAL : three differents startegies for 3 different types of
 categorical variables:
 - low cardinality: customizable strategy (strat_low_card)
@@ -24,8 +26,8 @@ cust_trans = CustTransformer()
 cust_trans.fit(small_df)
 df_enc = cust_trans.transform(small_df)
 cust_trans.get_feature_names(small_df)
+"""
 
-'''
 from sklearn.base import BaseEstimator
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -39,7 +41,9 @@ class CustTransformer(BaseEstimator):
 
     def __init__(self, thresh_card=12,
                  strat_binary='ord', strat_low_card='ohe',
-                 strat_high_card='bin', strat_quant='stand'):
+                 strat_high_card='bin', strat_quant='stand',
+                 stdscaling_encoded_cat=False
+                 ):
         self.thresh_card = thresh_card
         self.strat_binary = strat_binary
         self.strat_low_card = strat_low_card
@@ -49,23 +53,32 @@ class CustTransformer(BaseEstimator):
                                'low_card': strat_low_card,
                                'high_card': strat_high_card,
                                'numeric': strat_quant}
+        self.stdscaling_encoded_cat = stdscaling_encoded_cat
+        # self.cat_trans = None
+        # self.has_cat = None
+        # self.has_num = None
+        # self.ct_cat = None
+        # self.num_cols = None
+        # self.cat_cols = None
+        # self.name_columns = None
+        # self.column_trans = None
+        # self.num_trans = None
 
     def d_type_col(self, X):
-        bin_cols = (X.nunique()[X.nunique() <= 2].index)
+        bin_cols = X.nunique()[X.nunique() <= 2].index
         X_C_cols = X.select_dtypes(include=['object', 'category'])
         C_l_card_cols = \
-            X_C_cols.nunique()[X_C_cols.nunique() \
-                .between(3, self.thresh_card)].index
+            X_C_cols.nunique()[X_C_cols.nunique()
+                               .between(3, self.thresh_card)].index
         C_h_card_cols = \
             X_C_cols.nunique()[X_C_cols.nunique() > self.thresh_card].index
-        Q_cols = [c for c in X.select_dtypes(include=[np.number]).columns \
+        Q_cols = [c for c in X.select_dtypes(include=[np.number]).columns
                   if c not in bin_cols]
         d_t = {'binary': bin_cols,
                'low_card': C_l_card_cols,
                'high_card': C_h_card_cols,
                'numeric': Q_cols}
         d_t = {k: v for k, v in d_t.items() if len(v)}
-        # print(d_t)
         return d_t
 
     def get_feature_names(self, X, y=None):
@@ -117,10 +130,15 @@ class CustTransformer(BaseEstimator):
 
             self.cat_cols = []  # liste des colonnes catégorielles à transformer
             for k, v in self.d_type_col(X).items():
-                if k != 'numeric': self.cat_cols += (list(v))
+                if k != 'numeric':
+                    self.cat_cols += (list(v))
 
             self.ct_cat = ColumnTransformer(list_trans)
-            self.cat_trans = Pipeline([("categ", self.ct_cat)])
+            if self.stdscaling_encoded_cat:
+                self.cat_trans = Pipeline([("categ", self.ct_cat)])
+            else: # add standardscaling step after encoding
+                self.cat_trans = Pipeline([("categ", self.ct_cat),
+                                           ("std", StandardScaler())])
 
         if self.has_num:
             self.num_trans = Pipeline([("numeric", d_enc[self.strat_quant])])
@@ -140,7 +158,7 @@ class CustTransformer(BaseEstimator):
         self.name_columns = self.get_feature_names(X, y)
         return self.column_trans.fit(X, y)
 
-    def transform(self, X, y=None):  # to get a dataframe
+    def transform(self, X, y=None):
         return pd.DataFrame(self.column_trans.transform(X),
                             index=X.index,
                             columns=self.name_columns)
@@ -150,4 +168,3 @@ class CustTransformer(BaseEstimator):
         return pd.DataFrame(self.column_trans.transform(X),
                             index=X.index,
                             columns=self.name_columns)
-
